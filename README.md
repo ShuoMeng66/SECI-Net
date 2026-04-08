@@ -112,7 +112,7 @@ python main/train.py \
 
 ## Training Output
 
-`main/train.py` prints a full metric summary at every epoch:
+`main/train.py` prints a full metric summary at every epoch and shows a live per-batch progress bar during training:
 
 - total loss
 - counterfactual classification loss
@@ -123,6 +123,16 @@ python main/train.py \
 - macro F1
 
 When a validation set is provided, the best checkpoint is selected by validation macro F1.
+
+Each run also writes experiment artifacts to `--save_dir`:
+
+- `best_model.pt`
+- `train_args.json`
+- `vocab.json`
+- `labels.json`
+- `metrics_history.csv`
+- `metrics_history.json`
+- `summary.json`
 
 ## Data Format
 

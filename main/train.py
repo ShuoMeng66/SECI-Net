@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import random
 import sys
@@ -205,6 +206,62 @@ def format_metrics(split: str, metrics: dict[str, float]) -> str:
     )
 
 
+def flatten_metrics(prefix: str, metrics: dict[str, float] | None) -> dict[str, float | str]:
+    if metrics is None:
+        return {
+            f"{prefix}_loss": "",
+            f"{prefix}_counterfactual_loss": "",
+            f"{prefix}_intervention_loss": "",
+            f"{prefix}_accuracy": "",
+            f"{prefix}_macro_precision": "",
+            f"{prefix}_macro_recall": "",
+            f"{prefix}_macro_f1": "",
+        }
+    return {f"{prefix}_{key}": value for key, value in metrics.items()}
+
+
+def save_metrics_history(output_dir: Path, history_rows: list[dict[str, float | int | str]]) -> None:
+    if not history_rows:
+        return
+
+    csv_path = output_dir / "metrics_history.csv"
+    json_path = output_dir / "metrics_history.json"
+    fieldnames = list(history_rows[0].keys())
+
+    with csv_path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(history_rows)
+
+    with json_path.open("w", encoding="utf-8") as file:
+        json.dump(history_rows, file, ensure_ascii=False, indent=2)
+
+
+def save_experiment_summary(
+    output_dir: Path,
+    args: argparse.Namespace,
+    best_epoch: int | None,
+    best_score: float,
+    test_metrics: dict[str, float] | None,
+    history_rows: list[dict[str, float | int | str]],
+) -> None:
+    summary = {
+        "selection_metric": "valid_macro_f1" if any(row.get("valid_macro_f1", "") != "" for row in history_rows) else "train_macro_f1",
+        "best_epoch": best_epoch,
+        "best_score": None if best_score == float("-inf") else best_score,
+        "test_metrics": test_metrics,
+        "save_dir": str(output_dir),
+        "train_args_path": str(output_dir / "train_args.json"),
+        "best_model_path": str(output_dir / "best_model.pt"),
+        "metrics_history_csv": str(output_dir / "metrics_history.csv"),
+        "metrics_history_json": str(output_dir / "metrics_history.json"),
+        "seed": args.seed,
+    }
+
+    with (output_dir / "summary.json").open("w", encoding="utf-8") as file:
+        json.dump(summary, file, ensure_ascii=False, indent=2)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train SECI-Net with optional temporal encoding, block-sparse attention, and counterfactual losses."
@@ -367,6 +424,9 @@ def main() -> None:
     )
 
     best_score = float("-inf")
+    best_epoch: int | None = None
+    history_rows: list[dict[str, float | int | str]] = []
+    test_metrics: dict[str, float] | None = None
     print("Start training...")
 
     for epoch in range(1, args.epochs + 1):
@@ -388,10 +448,20 @@ def main() -> None:
             f"{format_metrics('train', train_metrics)}"
         )
 
+        row: dict[str, float | int | str] = {
+            "epoch": epoch,
+            "lr": optimizer.param_groups[0]["lr"],
+        }
+        row.update(flatten_metrics("train", train_metrics))
+
         if valid_loader is None:
             if train_metrics["macro_f1"] > best_score:
                 best_score = train_metrics["macro_f1"]
+                best_epoch = epoch
                 save_artifacts(model, output_dir, vocab.to_dict(), label_to_index, args)
+            row.update(flatten_metrics("valid", None))
+            row["is_best"] = int(best_epoch == epoch)
+            history_rows.append(row)
             continue
 
         with torch.no_grad():
@@ -408,10 +478,14 @@ def main() -> None:
                 total_epochs=args.epochs,
             )
         print(f"Epoch {epoch:03d}/{args.epochs:03d} | {format_metrics('valid', valid_metrics)}")
+        row.update(flatten_metrics("valid", valid_metrics))
 
         if valid_metrics["macro_f1"] > best_score:
             best_score = valid_metrics["macro_f1"]
+            best_epoch = epoch
             save_artifacts(model, output_dir, vocab.to_dict(), label_to_index, args)
+        row["is_best"] = int(best_epoch == epoch)
+        history_rows.append(row)
 
     if test_loader is not None:
         best_model_path = output_dir / "best_model.pt"
@@ -433,7 +507,21 @@ def main() -> None:
             )
         print(f"Test | {format_metrics('test', test_metrics)}")
 
-    print(f"Training finished. Best checkpoint saved to: {output_dir}")
+    save_metrics_history(output_dir, history_rows)
+    save_experiment_summary(
+        output_dir=output_dir,
+        args=args,
+        best_epoch=best_epoch,
+        best_score=best_score,
+        test_metrics=test_metrics,
+        history_rows=history_rows,
+    )
+    print(
+        "Training finished. "
+        f"Best checkpoint saved to: {output_dir} | "
+        f"history: {output_dir / 'metrics_history.csv'} | "
+        f"summary: {output_dir / 'summary.json'}"
+    )
 
 
 if __name__ == "__main__":

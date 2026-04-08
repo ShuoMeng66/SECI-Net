@@ -112,7 +112,7 @@ python main/train.py \
 
 ## 训练输出
 
-`main/train.py` 会在每个 epoch 打印完整指标，包括：
+`main/train.py` 会在训练过程中显示按 batch 刷新的进度条，并在每个 epoch 打印完整指标，包括：
 
 - 总损失 `loss`
 - 反事实分类损失 `counterfactual_loss`
@@ -123,6 +123,16 @@ python main/train.py \
 - 宏平均 F1 `macro_f1`
 
 如果提供验证集，最佳模型按验证集的 `macro_f1` 保存。
+
+每次训练还会在 `--save_dir` 下产出一组便于做消融实验和结果复现的文件：
+
+- `best_model.pt`
+- `train_args.json`
+- `vocab.json`
+- `labels.json`
+- `metrics_history.csv`
+- `metrics_history.json`
+- `summary.json`
 
 ## 数据格式
 
