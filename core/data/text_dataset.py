@@ -2,6 +2,7 @@ import csv
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
@@ -406,13 +407,18 @@ def build_dataloaders(
     )
 
     def make_loader(dataset: Dataset, shuffle: bool) -> DataLoader:
-        return DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            collate_fn=lambda batch: collate_batch(batch, pad_idx=vocab.pad_idx),
-        )
+        loader_kwargs = {
+            "dataset": dataset,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "num_workers": num_workers,
+            "collate_fn": partial(collate_batch, pad_idx=vocab.pad_idx),
+            "pin_memory": torch.cuda.is_available(),
+        }
+        if num_workers > 0:
+            loader_kwargs["persistent_workers"] = True
+            loader_kwargs["prefetch_factor"] = 2
+        return DataLoader(**loader_kwargs)
 
     return {
         "vocab": vocab,

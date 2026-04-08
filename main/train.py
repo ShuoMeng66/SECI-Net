@@ -1,8 +1,10 @@
 import argparse
 import csv
 import json
+import os
 import random
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 import torch
@@ -26,9 +28,16 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
+def suggest_num_workers() -> int:
+    cpu_count = os.cpu_count() or 1
+    if cpu_count <= 2:
+        return 0
+    return min(8, cpu_count - 1)
+
+
 def move_batch_to_device(batch: dict[str, torch.Tensor], device: torch.device) -> dict[str, torch.Tensor]:
     return {
-        key: value.to(device) if isinstance(value, torch.Tensor) else value
+        key: value.to(device, non_blocking=True) if isinstance(value, torch.Tensor) else value
         for key, value in batch.items()
     }
 
@@ -118,11 +127,13 @@ def run_epoch(
     classification_criterion: nn.Module,
     intervention_criterion: CounterfactualInterventionLoss,
     optimizer: torch.optim.Optimizer | None,
+    scaler: torch.cuda.amp.GradScaler | None,
     device: torch.device,
     counterfactual_weight: float,
     split: str,
     epoch: int,
     total_epochs: int,
+    use_amp: bool,
 ) -> dict[str, float]:
     is_training = optimizer is not None
     model.train(is_training)
@@ -145,28 +156,41 @@ def run_epoch(
 
     for step, batch in enumerate(progress_bar, start=1):
         batch = move_batch_to_device(batch, device)
-        logits = forward_batch(
-            model=model,
-            input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
-            lengths=batch["lengths"],
-            time_values=batch.get("time_values"),
+        autocast_context = (
+            torch.autocast(device_type=device.type, dtype=torch.float16)
+            if use_amp and device.type == "cuda"
+            else nullcontext()
         )
-        classification_loss = classification_criterion(logits, batch["labels"])
-        counterfactual_classification_loss, intervention_loss = compute_counterfactual_losses(
-            model=model,
-            batch=batch,
-            classification_criterion=classification_criterion,
-            intervention_criterion=intervention_criterion,
-            counterfactual_weight=counterfactual_weight,
-        )
-        loss = classification_loss + counterfactual_classification_loss + intervention_loss
+        with autocast_context:
+            logits = forward_batch(
+                model=model,
+                input_ids=batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                lengths=batch["lengths"],
+                time_values=batch.get("time_values"),
+            )
+            classification_loss = classification_criterion(logits, batch["labels"])
+            counterfactual_classification_loss, intervention_loss = compute_counterfactual_losses(
+                model=model,
+                batch=batch,
+                classification_criterion=classification_criterion,
+                intervention_criterion=intervention_criterion,
+                counterfactual_weight=counterfactual_weight,
+            )
+            loss = classification_loss + counterfactual_classification_loss + intervention_loss
 
         if is_training:
             optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+            if scaler is not None and scaler.is_enabled():
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
 
         total_loss += loss.item()
         total_counterfactual_loss += counterfactual_classification_loss.item()
@@ -308,9 +332,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--consistency_weight", type=float, default=0.5)
     parser.add_argument("--intervention_weight", type=float, default=0.5)
     parser.add_argument("--intervention_margin", type=float, default=0.2)
-    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=suggest_num_workers())
+    parser.add_argument("--amp", dest="use_amp", action="store_true", help="Enable automatic mixed precision on CUDA.")
+    parser.add_argument("--no_amp", dest="use_amp", action="store_false", help="Disable automatic mixed precision.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save_dir", type=str, default=str(PROJECT_ROOT / "checkpoints"))
+    parser.set_defaults(use_amp=torch.cuda.is_available())
     return parser.parse_args()
 
 
@@ -385,7 +412,8 @@ def main() -> None:
         f"Using device={device} | vocab_size={len(vocab.itos)} | num_classes={len(label_to_index)} | "
         f"train_batches={len(train_loader)} | "
         f"valid_batches={len(valid_loader) if valid_loader is not None else 0} | "
-        f"test_batches={len(test_loader) if test_loader is not None else 0}"
+        f"test_batches={len(test_loader) if test_loader is not None else 0} | "
+        f"num_workers={args.num_workers} | amp={args.use_amp and device.type == 'cuda'}"
     )
     output_dir = Path(args.save_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -422,6 +450,7 @@ def main() -> None:
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
+    scaler = torch.cuda.amp.GradScaler(enabled=args.use_amp and device.type == "cuda")
 
     best_score = float("-inf")
     best_epoch: int | None = None
@@ -436,11 +465,13 @@ def main() -> None:
             classification_criterion=classification_criterion,
             intervention_criterion=intervention_criterion,
             optimizer=optimizer,
+            scaler=scaler,
             device=device,
             counterfactual_weight=args.counterfactual_weight,
             split="train",
             epoch=epoch,
             total_epochs=args.epochs,
+            use_amp=args.use_amp,
         )
         print(
             f"Epoch {epoch:03d}/{args.epochs:03d} | "
@@ -471,11 +502,13 @@ def main() -> None:
                 classification_criterion=classification_criterion,
                 intervention_criterion=intervention_criterion,
                 optimizer=None,
+                scaler=None,
                 device=device,
                 counterfactual_weight=args.counterfactual_weight,
                 split="valid",
                 epoch=epoch,
                 total_epochs=args.epochs,
+                use_amp=args.use_amp,
             )
         print(f"Epoch {epoch:03d}/{args.epochs:03d} | {format_metrics('valid', valid_metrics)}")
         row.update(flatten_metrics("valid", valid_metrics))
@@ -499,11 +532,13 @@ def main() -> None:
                 classification_criterion=classification_criterion,
                 intervention_criterion=intervention_criterion,
                 optimizer=None,
+                scaler=None,
                 device=device,
                 counterfactual_weight=args.counterfactual_weight,
                 split="test",
                 epoch=args.epochs,
                 total_epochs=args.epochs,
+                use_amp=args.use_amp,
             )
         print(f"Test | {format_metrics('test', test_metrics)}")
 
