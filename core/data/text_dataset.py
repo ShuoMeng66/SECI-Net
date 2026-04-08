@@ -127,17 +127,22 @@ class TextClassificationDataset(Dataset):
         vocab: Vocabulary,
         label_to_index: dict[str, int],
         tokenizer: Callable[[str], list[str]],
+        max_length: Optional[int] = None,
     ) -> None:
         self.records = records
         self.vocab = vocab
         self.label_to_index = label_to_index
         self.tokenizer = tokenizer
+        self.max_length = max_length
 
     def __len__(self) -> int:
         return len(self.records)
 
     def _encode_text(self, text: str) -> list[int]:
-        token_ids = self.vocab.encode(self.tokenizer(text))
+        tokens = self.tokenizer(text)
+        if self.max_length is not None and self.max_length > 0:
+            tokens = tokens[: self.max_length]
+        token_ids = self.vocab.encode(tokens)
         if not token_ids:
             token_ids = [self.vocab.unk_idx]
         return token_ids
@@ -357,6 +362,7 @@ def build_dataloaders(
     batch_size: int = 32,
     min_freq: int = 1,
     max_vocab_size: Optional[int] = None,
+    max_length: Optional[int] = None,
     tokenizer: Callable[[str], list[str]] = default_tokenizer,
     num_workers: int = 0,
 ) -> dict[str, object]:
@@ -374,6 +380,7 @@ def build_dataloaders(
         vocab=vocab,
         label_to_index=label_to_index,
         tokenizer=tokenizer,
+        max_length=max_length,
     )
     valid_dataset = (
         TextClassificationDataset(
@@ -381,6 +388,7 @@ def build_dataloaders(
             vocab=vocab,
             label_to_index=label_to_index,
             tokenizer=tokenizer,
+            max_length=max_length,
         )
         if valid_records
         else None
@@ -391,6 +399,7 @@ def build_dataloaders(
             vocab=vocab,
             label_to_index=label_to_index,
             tokenizer=tokenizer,
+            max_length=max_length,
         )
         if test_records
         else None

@@ -280,6 +280,7 @@ def main() -> None:
         batch_size=args.batch_size,
         min_freq=args.min_freq,
         max_vocab_size=args.max_vocab_size,
+        max_length=args.max_len,
         num_workers=args.num_workers,
     )
 
