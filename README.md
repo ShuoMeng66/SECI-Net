@@ -71,6 +71,18 @@ The default quick-start dataset is `yelp_polarity`.
 python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity
 ```
 
+If you are on AutoDL, a campus server, or a mainland network where Hugging Face is unstable, use the mirror mode first:
+
+```bash
+python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source hf-mirror
+```
+
+If the mirror still fails, fall back to direct archive download:
+
+```bash
+python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source direct
+```
+
 Supported built-in shortcuts:
 
 - `yelp_polarity`

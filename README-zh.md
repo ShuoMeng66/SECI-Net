@@ -71,6 +71,18 @@ pip install -r requirements.txt
 python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity
 ```
 
+如果是在 AutoDL、校园服务器或者访问 Hugging Face 不稳定的网络环境下，建议优先使用镜像模式：
+
+```bash
+python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source hf-mirror
+```
+
+如果镜像模式仍然失败，再切到直接下载模式：
+
+```bash
+python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source direct
+```
+
 当前内置的数据集快捷选项包括：
 
 - `yelp_polarity`
