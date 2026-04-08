@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from torch import nn
+from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -118,6 +119,9 @@ def run_epoch(
     optimizer: torch.optim.Optimizer | None,
     device: torch.device,
     counterfactual_weight: float,
+    split: str,
+    epoch: int,
+    total_epochs: int,
 ) -> dict[str, float]:
     is_training = optimizer is not None
     model.train(is_training)
@@ -125,10 +129,20 @@ def run_epoch(
     total_loss = 0.0
     total_counterfactual_loss = 0.0
     total_intervention_loss = 0.0
+    total_correct = 0
+    total_examples = 0
     predictions: list[int] = []
     references: list[int] = []
 
-    for batch in data_loader:
+    progress_bar = tqdm(
+        data_loader,
+        total=len(data_loader),
+        desc=f"{split.capitalize()} {epoch:03d}/{total_epochs:03d}",
+        dynamic_ncols=True,
+        leave=False,
+    )
+
+    for step, batch in enumerate(progress_bar, start=1):
         batch = move_batch_to_device(batch, device)
         logits = forward_batch(
             model=model,
@@ -156,8 +170,20 @@ def run_epoch(
         total_loss += loss.item()
         total_counterfactual_loss += counterfactual_classification_loss.item()
         total_intervention_loss += intervention_loss.item()
-        predictions.extend(torch.argmax(logits, dim=-1).cpu().tolist())
-        references.extend(batch["labels"].cpu().tolist())
+        predicted_labels = torch.argmax(logits, dim=-1)
+        labels = batch["labels"]
+        total_correct += (predicted_labels == labels).sum().item()
+        total_examples += labels.size(0)
+        predictions.extend(predicted_labels.cpu().tolist())
+        references.extend(labels.cpu().tolist())
+        progress_bar.set_postfix(
+            loss=f"{total_loss / step:.4f}",
+            cf_loss=f"{total_counterfactual_loss / step:.4f}",
+            int_loss=f"{total_intervention_loss / step:.4f}",
+            acc=f"{(total_correct / max(total_examples, 1)):.4f}",
+        )
+
+    progress_bar.close()
 
     metrics = compute_metrics(predictions, references)
     num_batches = max(len(data_loader), 1)
@@ -269,10 +295,17 @@ def main() -> None:
     args = parse_args()
     set_seed(args.seed)
 
+    print("Loading dataset records...")
     train_records = load_records(args.train_path, args)
     valid_records = load_records(args.valid_path, args)
     test_records = load_records(args.test_path, args)
+    print(
+        f"Loaded records | train={len(train_records)} | "
+        f"valid={len(valid_records) if valid_records is not None else 0} | "
+        f"test={len(test_records) if test_records is not None else 0}"
+    )
 
+    print("Building vocabulary and dataloaders...")
     data_bundle = build_dataloaders(
         train_records=train_records,
         valid_records=valid_records,
@@ -291,6 +324,12 @@ def main() -> None:
     test_loader = data_bundle["test_loader"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(
+        f"Using device={device} | vocab_size={len(vocab.itos)} | num_classes={len(label_to_index)} | "
+        f"train_batches={len(train_loader)} | "
+        f"valid_batches={len(valid_loader) if valid_loader is not None else 0} | "
+        f"test_batches={len(test_loader) if test_loader is not None else 0}"
+    )
     output_dir = Path(args.save_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -328,6 +367,7 @@ def main() -> None:
     )
 
     best_score = float("-inf")
+    print("Start training...")
 
     for epoch in range(1, args.epochs + 1):
         train_metrics = run_epoch(
@@ -338,6 +378,9 @@ def main() -> None:
             optimizer=optimizer,
             device=device,
             counterfactual_weight=args.counterfactual_weight,
+            split="train",
+            epoch=epoch,
+            total_epochs=args.epochs,
         )
         print(
             f"Epoch {epoch:03d}/{args.epochs:03d} | "
@@ -360,6 +403,9 @@ def main() -> None:
                 optimizer=None,
                 device=device,
                 counterfactual_weight=args.counterfactual_weight,
+                split="valid",
+                epoch=epoch,
+                total_epochs=args.epochs,
             )
         print(f"Epoch {epoch:03d}/{args.epochs:03d} | {format_metrics('valid', valid_metrics)}")
 
@@ -381,6 +427,9 @@ def main() -> None:
                 optimizer=None,
                 device=device,
                 counterfactual_weight=args.counterfactual_weight,
+                split="test",
+                epoch=args.epochs,
+                total_epochs=args.epochs,
             )
         print(f"Test | {format_metrics('test', test_metrics)}")
 
