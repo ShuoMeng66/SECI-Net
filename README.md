@@ -203,13 +203,15 @@ Contributions are welcome. If you have a suggestion that would make this project
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+See `CONTRIBUTING.md` for details.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 <!-- LICENSE -->
 ## License
 
-This repository does not include a license file yet.
+Distributed under the MIT License. See `LICENSE` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

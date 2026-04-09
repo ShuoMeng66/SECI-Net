@@ -195,13 +195,15 @@ python main/counterfactual_generator.py \
 4. 推送分支 (`git push origin feature/AmazingFeature`)
 5. 提交 Pull Request
 
+详细规范请参考 `CONTRIBUTING.md`。
+
 <p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
 
 <!-- LICENSE -->
 ## 许可证
 
-当前仓库尚未补充 License 文件。
+本项目采用 MIT License，详见 `LICENSE`。
 
 <p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
