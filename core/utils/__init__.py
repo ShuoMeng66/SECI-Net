@@ -1,3 +1,13 @@
-from .losses import ClassificationLoss, CounterfactualInterventionLoss
+from .losses import (
+    ClassificationLoss,
+    CounterfactualInterventionLoss,
+    EvidenceSparsityLoss,
+    RecoverabilityLoss,
+)
 
-__all__ = ["ClassificationLoss", "CounterfactualInterventionLoss"]
+__all__ = [
+    "ClassificationLoss",
+    "CounterfactualInterventionLoss",
+    "RecoverabilityLoss",
+    "EvidenceSparsityLoss",
+]

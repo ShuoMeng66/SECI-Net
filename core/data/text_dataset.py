@@ -19,6 +19,20 @@ def default_tokenizer(text: str) -> list[str]:
     return list(text)
 
 
+def detokenize_tokens(tokens: list[str]) -> str:
+    if not tokens:
+        return ""
+    if len(tokens) == 1:
+        return tokens[0]
+    if any(len(token) > 1 for token in tokens):
+        text = " ".join(tokens)
+        text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+        text = re.sub(r"([\(\[\{])\s+", r"\1", text)
+        text = re.sub(r"\s+([\)\]\}])", r"\1", text)
+        return text
+    return "".join(tokens)
+
+
 @dataclass
 class TextRecord:
     text: str
@@ -103,6 +117,17 @@ class Vocabulary:
             "specials": self.specials,
             "itos": self.itos,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "Vocabulary":
+        vocab = cls(
+            min_freq=int(payload.get("min_freq", 1)),
+            max_size=payload.get("max_size"),
+            specials=list(payload.get("specials", ["<pad>", "<unk>"])),
+        )
+        vocab.itos = list(payload["itos"])
+        vocab.stoi = {token: index for index, token in enumerate(vocab.itos)}
+        return vocab
 
 
 def parse_optional_float(value: object) -> Optional[float]:

@@ -1,5 +1,8 @@
 /article/
 /csuthesis_v1_0_5/
+/review-console/
+/.playwright-cli/
+/output/
 /data/
 /checkpoints/
 /counterfactual_ckpt/
@@ -16,3 +19,5 @@ __pycache__/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+labels.json
+vocab.json

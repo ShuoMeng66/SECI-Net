@@ -1,60 +1,76 @@
 # SECI-Net
 
-SECI-Net is a PyTorch implementation of a hybrid text classifier that combines a custom Transformer encoder, a custom stacked LSTM, block-sparse evidence routing, and optional counterfactual intervention learning.
+SECI-Net is a PyTorch project for evidence-aware text classification, counterfactual supervision, and counterfactual review augmentation. The repository is organized as a code-first open-source project: the focus is on readable training code, reproducible experiments, and components that can be reused in downstream NLP work.
 
-The repository is organized as code-first project for developers. It includes:
+This public code snapshot intentionally centers on the research code. Local-only materials such as paper writing folders and the frontend review console are not part of the published workflow.
 
-- a readable hybrid model implementation in `core/model/hybrid_text_model.py`
-- data loading utilities in `core/data/text_dataset.py`
-- a training entrypoint in `main/train.py`
-- a public dataset downloader in `main/download_datasets.py`
-- a dataset splitting utility in `main/split_dataset.py`
-- a standalone counterfactual generation prototype in `main/counterfactual_generator.py`
+## Highlights
 
-## Project Structure
+- Hybrid classifier with Transformer-style contextual modeling, stacked recurrent modeling, and explicit evidence routing
+- Counterfactual training support for paired factual / counterfactual samples
+- Recoverability and intervention losses for controlled representation learning
+- Standalone `GAN.py` module for offline counterfactual review augmentation
+- Training, checkpointing, dataset preparation, and smoke-test coverage in one repository
+- Optional local inference API for quick model inspection
+
+## Repository Layout
 
 ```text
 SECI-Net/
 ├── core/
 │   ├── data/
+│   │   ├── __init__.py
+│   │   └── text_dataset.py
 │   ├── model/
+│   │   ├── __init__.py
+│   │   ├── checkpointing.py
+│   │   ├── components.py
+│   │   ├── hybrid_text_model.py
+│   │   └── seci_net.py
 │   └── utils/
+│       ├── __init__.py
+│       └── losses.py
 ├── main/
 │   ├── counterfactual_generator.py
 │   ├── download_datasets.py
 │   ├── split_dataset.py
 │   └── train.py
-├── .gitignore
+├── tests/
+│   ├── test_gan.py
+│   └── test_seci_net_v2.py
+├── api_server.py
+├── GAN.py
+├── GAN.md
 ├── README.md
 ├── README-zh.md
 └── requirements.txt
 ```
 
-## Quick Start
+## Installation
 
-### 1. Clone the project
+### 1. Clone the repository
 
 ```bash
 git clone git@github.com:ShuoMeng66/SECI-Net.git
 cd SECI-Net
 ```
 
-### 2. Create the virtual environment
+### 2. Create a virtual environment
 
 ```bash
-python -m venv SECINet
+python -m venv .venv
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\SECINet\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
 Linux / macOS:
 
 ```bash
-source SECINet/bin/activate
+source .venv/bin/activate
 ```
 
 ### 3. Install dependencies
@@ -63,35 +79,58 @@ source SECINet/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Download a public dataset
+Python 3.10+ is recommended.
 
-The default quick-start dataset is `yelp_polarity`.
+## Data Format
 
-```bash
-python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity
+SECI-Net accepts `csv`, `tsv`, and `txt`.
+
+Default structured columns:
+
+- `text`
+- `label`
+
+Optional counterfactual columns:
+
+- `counterfactual_text`
+- `counterfactual_label`
+- `time_column`
+- `counterfactual_time_column`
+
+Plain-text files must use:
+
+```text
+label<TAB>text
 ```
 
-If you are on AutoDL, a campus server, or a mainland network where Hugging Face is unstable, use the mirror mode first:
+## Quick Start
 
-```bash
-python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source hf-mirror
-```
+### 1. Download a dataset
 
-If the mirror still fails, fall back to direct archive download:
-
-```bash
-python main/download_datasets.py --dataset yelp_polarity --output_dir data/raw/yelp_polarity --source direct
-```
-
-Supported built-in shortcuts:
+The built-in downloader supports:
 
 - `yelp_polarity`
 - `ag_news`
 - `imdb`
 
-### 5. Split the dataset
+Example:
 
-If the downloaded dataset already has a test split, keep it and split only the training file into `train` and `valid`:
+```bash
+python main/download_datasets.py \
+  --dataset yelp_polarity \
+  --output_dir data/raw/yelp_polarity
+```
+
+If you are on a mainland network or a server where Hugging Face access is unstable, try:
+
+```bash
+python main/download_datasets.py \
+  --dataset yelp_polarity \
+  --output_dir data/raw/yelp_polarity \
+  --source hf-mirror
+```
+
+### 2. Split the dataset
 
 ```bash
 python main/split_dataset.py \
@@ -100,7 +139,7 @@ python main/split_dataset.py \
   --output_dir data/yelp_polarity
 ```
 
-### 6. Start training
+### 3. Train the classifier
 
 ```bash
 python main/train.py \
@@ -110,77 +149,37 @@ python main/train.py \
   --save_dir checkpoints/yelp_polarity
 ```
 
-## Training Output
+## GAN-Based Counterfactual Augmentation
 
-`main/train.py` prints a full metric summary at every epoch and shows a live per-batch progress bar during training:
+SECI-Net now supports an offline augmentation stage for review-style counterfactuals. The workflow is:
 
-- total loss
-- counterfactual classification loss
-- intervention loss
-- accuracy
-- macro precision
-- macro recall
-- macro F1
+1. train the standalone GAN on paired counterfactual examples
+2. generate missing counterfactual reviews for the training split
+3. merge the generated pairs back into the training records
+4. continue with the regular SECI-Net classification training
 
-When a validation set is provided, the best checkpoint is selected by validation macro F1.
+Enable it directly from the main training script:
 
-Each run also writes experiment artifacts to `--save_dir`:
-
-- `best_model.pt`
-- `train_args.json`
-- `vocab.json`
-- `labels.json`
-- `metrics_history.csv`
-- `metrics_history.json`
-- `summary.json`
-
-## Data Format
-
-SECI-Net accepts `csv`, `tsv`, and `txt` files.
-
-For `csv` and `tsv`, the default columns are:
-
-- `text`
-- `label`
-
-Optional columns:
-
-- `counterfactual_text`
-- `counterfactual_label`
-- `time_column`
-- `counterfactual_time_column`
-
-For plain text files, each line must be:
-
-```text
-label<TAB>text
+```bash
+python main/train.py \
+  --train_path data/yelp_polarity/train.csv \
+  --valid_path data/yelp_polarity/valid.csv \
+  --test_path data/yelp_polarity/test.csv \
+  --save_dir checkpoints/yelp_polarity_gan \
+  --enable_gan_augmentation \
+  --gan_epochs 5 \
+  --gan_batch_size 16 \
+  --gan_max_source_len 128 \
+  --gan_max_target_len 128
 ```
 
-## Main Training Arguments
+Important defaults:
 
-- `--batch_size`
-- `--epochs`
-- `--lr`
-- `--weight_decay`
-- `--embed_dim`
-- `--transformer_layers`
-- `--num_heads`
-- `--ffn_hidden_dim`
-- `--lstm_hidden_dim`
-- `--lstm_layers`
-- `--dropout`
-- `--attention_type`
-- `--block_size`
-- `--local_window_size`
-- `--topk_global_blocks`
-- `--counterfactual_weight`
-- `--consistency_weight`
-- `--intervention_weight`
-- `--save_dir`
+- GAN augmentation only touches the training split
+- human-annotated counterfactual pairs are preserved by default
+- when no paired counterfactual data is available, the GAN stage is skipped cleanly
 
-## Counterfactual Generator Prototype
-
-If you already have paired counterfactual examples, you can run the standalone generator:
+You can also run the standalone wrapper:
 
 ```bash
 python main/counterfactual_generator.py \
@@ -190,10 +189,68 @@ python main/counterfactual_generator.py \
   --output_path outputs/generated_counterfactuals.csv
 ```
 
-## Design Notes
+See [`GAN.md`](./GAN.md) for the design rationale.
 
-This repository favors direct, inspectable code over heavy abstraction. The training loop, metrics, and data processing are intentionally kept close to the underlying PyTorch flow so that other developers can trace the implementation quickly.
+## Training Outputs
+
+Each training run writes experiment artifacts under `--save_dir`, including:
+
+- `best_model.pt`
+- `train_args.json`
+- `vocab.json`
+- `labels.json`
+- `metrics_history.csv`
+- `metrics_history.json`
+- `step_metrics.csv`
+- `summary.json`
+
+When GAN augmentation is enabled, an additional `gan/` directory is created under `--save_dir` by default:
+
+- `generated_counterfactuals.csv`
+- `metrics.json`
+- `counterfactual_generator.pt`
+- `counterfactual_discriminator.pt`
+- `counterfactual_vocab.json`
+- `counterfactual_labels.json`
+
+## Inference API
+
+For lightweight local inspection, you can run:
+
+```bash
+python api_server.py
+```
+
+The local API serves a simple prediction endpoint around a saved checkpoint and is intended for local experimentation rather than production deployment.
+
+## Testing
+
+Run the current unit and smoke tests with:
+
+```bash
+python -m unittest tests.test_seci_net_v2 tests.test_gan
+```
+
+The test suite covers:
+
+- tensor-shape and checkpoint smoke tests for SECI-Net
+- GAN data collation and fallback behavior
+- GAN forward passes and one-epoch CPU training
+- train-time integration with and without GAN augmentation
+
+## Design Philosophy
+
+This repository prefers inspectable code over heavy abstraction. The model, data flow, loss composition, and training loop are kept close to plain PyTorch so that researchers and engineers can trace what is happening without unpacking a large framework layer.
+
+## Roadmap
+
+Planned improvements include:
+
+- stronger aspect modeling for counterfactual reviews
+- better filtering or reranking for GAN-generated samples
+- broader benchmark coverage
+- clearer reproducibility presets for ablation studies
 
 ## License
 
-No license file has been added yet.
+A license file has not been added yet.

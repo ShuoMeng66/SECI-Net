@@ -41,48 +41,67 @@ class CounterfactualInterventionLoss(nn.Module):
         self.intervention_weight = intervention_weight
         self.margin = margin
 
-    def jensen_shannon_divergence(self, logits_a: Tensor, logits_b: Tensor) -> Tensor:
-        probs_a = torch.softmax(logits_a, dim=-1)
-        probs_b = torch.softmax(logits_b, dim=-1)
-        mean_probs = 0.5 * (probs_a + probs_b)
-
-        kl_a = torch.sum(
-            probs_a * (torch.log(probs_a.clamp_min(1e-8)) - torch.log(mean_probs.clamp_min(1e-8))),
-            dim=-1,
-        )
-        kl_b = torch.sum(
-            probs_b * (torch.log(probs_b.clamp_min(1e-8)) - torch.log(mean_probs.clamp_min(1e-8))),
-            dim=-1,
-        )
-        return 0.5 * (kl_a + kl_b)
+    def feature_distance(self, features_a: Tensor, features_b: Tensor) -> Tensor:
+        features_a = nn.functional.normalize(features_a, dim=-1)
+        features_b = nn.functional.normalize(features_b, dim=-1)
+        cosine_similarity = (features_a * features_b).sum(dim=-1)
+        return 1.0 - cosine_similarity
 
     def forward(
         self,
-        factual_logits: Tensor,
-        counterfactual_logits: Tensor,
+        factual_features: Tensor,
+        counterfactual_features: Tensor,
         factual_labels: Tensor,
         counterfactual_labels: Tensor,
     ) -> Tensor:
-        if factual_logits.size(0) == 0:
-            return factual_logits.new_zeros(())
+        if factual_features.size(0) == 0:
+            return factual_features.new_zeros(())
 
-        js_divergence = self.jensen_shannon_divergence(factual_logits, counterfactual_logits)
+        feature_distance = self.feature_distance(factual_features, counterfactual_features)
         same_label_mask = factual_labels == counterfactual_labels
         different_label_mask = ~same_label_mask
 
         if same_label_mask.any():
-            consistency_loss = js_divergence[same_label_mask].mean()
+            consistency_loss = feature_distance[same_label_mask].mean()
         else:
-            consistency_loss = js_divergence.new_zeros(())
+            consistency_loss = feature_distance.new_zeros(())
 
         if different_label_mask.any():
             intervention_loss = torch.relu(
-                self.margin - js_divergence[different_label_mask]
+                self.margin - feature_distance[different_label_mask]
             ).mean()
         else:
-            intervention_loss = js_divergence.new_zeros(())
+            intervention_loss = feature_distance.new_zeros(())
 
         return (
             self.consistency_weight * consistency_loss
             + self.intervention_weight * intervention_loss
         )
+
+
+class RecoverabilityLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.criterion = nn.BCEWithLogitsLoss()
+
+    def forward(self, recoverability_logits: Tensor, targets: Tensor) -> Tensor:
+        if recoverability_logits.numel() == 0:
+            return recoverability_logits.new_zeros(())
+        return self.criterion(recoverability_logits.view(-1), targets.float().view(-1))
+
+
+class EvidenceSparsityLoss(nn.Module):
+    def __init__(self, eps: float = 1e-8) -> None:
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, router_probabilities: Tensor, block_mask: Tensor) -> Tensor:
+        if router_probabilities.numel() == 0:
+            return router_probabilities.new_zeros(())
+
+        entropy = -(
+            router_probabilities * torch.log(router_probabilities.clamp_min(self.eps))
+        ).sum(dim=-1)
+        valid_blocks = block_mask.sum(dim=-1).clamp_min(2).float()
+        normalized_entropy = entropy / torch.log(valid_blocks)
+        return normalized_entropy.mean()
