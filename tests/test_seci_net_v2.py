@@ -42,6 +42,7 @@ class SECINetV2Tests(unittest.TestCase):
             lengths=lengths,
             time_values=time_values,
             return_dict=True,
+            return_attention=True,
         )
 
         self.assertEqual(tuple(output.logits.shape), (2, 2))
@@ -50,6 +51,8 @@ class SECINetV2Tests(unittest.TestCase):
         self.assertEqual(tuple(output.evidence_indices.shape), (2, 2))
         self.assertEqual(tuple(output.evidence_scores.shape), (2, 2))
         self.assertEqual(tuple(output.recoverability.shape), (2,))
+        self.assertIsNotNone(output.attention_maps)
+        self.assertEqual(tuple(output.attention_maps[-1].shape), (2, 5, 5))
 
     def test_router_masks_out_invalid_blocks(self) -> None:
         input_ids = torch.tensor([[1, 2, 0, 0, 0]], dtype=torch.long)

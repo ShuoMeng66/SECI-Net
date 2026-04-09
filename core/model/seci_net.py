@@ -33,6 +33,7 @@ class SECIOutput:
     recoverability: Tensor
     recoverability_logits: Tensor
     attention_mask: Tensor
+    attention_maps: list[Tensor] | None = None
 
 
 class HybridTextClassifier(nn.Module):
@@ -172,16 +173,25 @@ class HybridTextClassifier(nn.Module):
         attention_mask: Tensor,
         lengths: Tensor,
         time_values: Tensor | None = None,
+        return_attention: bool = False,
     ) -> dict[str, Tensor]:
         embeddings = self._embed_inputs(
             input_ids=input_ids,
             attention_mask=attention_mask,
             time_values=time_values,
         )
-        transformer_features = self.transformer_encoder(
-            embeddings,
-            attention_mask=attention_mask,
-        )
+        attention_maps: list[Tensor] | None = None
+        if return_attention:
+            transformer_features, attention_maps = self.transformer_encoder(
+                embeddings,
+                attention_mask=attention_mask,
+                return_attention=True,
+            )
+        else:
+            transformer_features = self.transformer_encoder(
+                embeddings,
+                attention_mask=attention_mask,
+            )
         recurrent_features = self.sequence_encoder(embeddings, lengths=lengths)
         fused_features, fusion_gates = self.fusion(
             transformer_features=transformer_features,
@@ -206,6 +216,7 @@ class HybridTextClassifier(nn.Module):
             "transformer_features": transformer_features,
             "recurrent_features": recurrent_features,
             "fusion_gates": fusion_gates,
+            "attention_maps": attention_maps,
             **evidence_state,
         }
 
@@ -217,6 +228,7 @@ class HybridTextClassifier(nn.Module):
         time_values: Tensor | None = None,
         return_features: bool = False,
         return_dict: bool = False,
+        return_attention: bool = False,
     ) -> Tensor | tuple[Tensor, Tensor] | SECIOutput:
         if attention_mask is None:
             attention_mask = (input_ids != self.pad_idx).long()
@@ -228,6 +240,7 @@ class HybridTextClassifier(nn.Module):
             attention_mask=attention_mask,
             lengths=lengths,
             time_values=time_values,
+            return_attention=return_attention,
         )
         logits = self.classifier(encoded["features"])
         recoverability_logits = self.recoverability_head(encoded["features"]).squeeze(-1)
@@ -249,6 +262,7 @@ class HybridTextClassifier(nn.Module):
             recoverability=recoverability,
             recoverability_logits=recoverability_logits,
             attention_mask=attention_mask,
+            attention_maps=encoded["attention_maps"],
         )
 
         if return_dict:

@@ -129,7 +129,12 @@ class MultiHeadSelfAttention(nn.Module):
             return scores
         return scores.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float("-inf"))
 
-    def forward(self, x: Tensor, key_padding_mask: Tensor | None = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        key_padding_mask: Tensor | None = None,
+        return_attention: bool = False,
+    ) -> Tensor | tuple[Tensor, Tensor]:
         queries = self._reshape_heads(self.query_projection(x))
         keys = self._reshape_heads(self.key_projection(x))
         values = self._reshape_heads(self.value_projection(x))
@@ -138,12 +143,16 @@ class MultiHeadSelfAttention(nn.Module):
         scores = self._apply_key_padding_mask(scores, key_padding_mask)
 
         attention = torch.softmax(scores, dim=-1)
+        attention_probs = attention
         attention = self.attention_dropout(attention)
         context = torch.matmul(attention, values)
 
         output = self._merge_heads(context)
         output = self.output_projection(output)
-        return self.output_dropout(output)
+        output = self.output_dropout(output)
+        if return_attention:
+            return output, attention_probs
+        return output
 
 
 class DifferentialMultiHeadAttention(nn.Module):
@@ -189,7 +198,12 @@ class DifferentialMultiHeadAttention(nn.Module):
             scores = scores.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float("-inf"))
         return scores
 
-    def forward(self, x: Tensor, key_padding_mask: Tensor | None = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        key_padding_mask: Tensor | None = None,
+        return_attention: bool = False,
+    ) -> Tensor | tuple[Tensor, Tensor]:
         q1 = self._reshape_heads(self.query_projection_1(x))
         k1 = self._reshape_heads(self.key_projection_1(x))
         q2 = self._reshape_heads(self.query_projection_2(x))
@@ -199,14 +213,25 @@ class DifferentialMultiHeadAttention(nn.Module):
         scores_1 = self._masked_scores(q1, k1, key_padding_mask)
         scores_2 = self._masked_scores(q2, k2, key_padding_mask)
 
-        attention_1 = self.attention_dropout(torch.softmax(scores_1, dim=-1))
-        attention_2 = self.attention_dropout(torch.softmax(scores_2, dim=-1))
+        attention_1 = torch.softmax(scores_1, dim=-1)
+        attention_2 = torch.softmax(scores_2, dim=-1)
+        attention_probs_1 = attention_1
+        attention_probs_2 = attention_2
+        attention_1 = self.attention_dropout(attention_1)
+        attention_2 = self.attention_dropout(attention_2)
 
         lambda_weight = torch.sigmoid(self.lambda_parameter)
         context = torch.matmul(attention_1, values) - lambda_weight * torch.matmul(attention_2, values)
         output = self._merge_heads(context)
         output = self.output_projection(output)
-        return self.output_dropout(output)
+        output = self.output_dropout(output)
+        if return_attention:
+            lambda_weight = torch.sigmoid(self.lambda_parameter)
+            effective_attention = attention_probs_1 - lambda_weight * attention_probs_2
+            effective_attention = effective_attention.clamp_min(0.0)
+            effective_attention = effective_attention / effective_attention.sum(dim=-1, keepdim=True).clamp_min(1e-8)
+            return output, effective_attention
+        return output
 
 
 class BlockSparseMultiHeadAttention(nn.Module):
@@ -308,7 +333,12 @@ class BlockSparseMultiHeadAttention(nn.Module):
         valid_key_mask = attention_mask.unsqueeze(1).bool()
         return sparse_mask & valid_query_mask & valid_key_mask
 
-    def forward(self, x: Tensor, key_padding_mask: Tensor | None = None) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        key_padding_mask: Tensor | None = None,
+        return_attention: bool = False,
+    ) -> Tensor | tuple[Tensor, Tensor]:
         attention_mask = (~key_padding_mask).long() if key_padding_mask is not None else x.new_ones(
             x.size(0), x.size(1), dtype=torch.long
         )
@@ -319,12 +349,17 @@ class BlockSparseMultiHeadAttention(nn.Module):
 
         scores = torch.matmul(queries, keys.transpose(-2, -1)) / math.sqrt(self.head_dim)
         sparse_mask = self._build_sparse_mask(x, attention_mask).unsqueeze(1)
-        attention = self.attention_dropout(masked_softmax(scores, sparse_mask))
+        attention = masked_softmax(scores, sparse_mask)
+        attention_probs = attention
+        attention = self.attention_dropout(attention)
         context = torch.matmul(attention, values)
 
         output = self._merge_heads(context)
         output = self.output_projection(output)
-        return self.output_dropout(output)
+        output = self.output_dropout(output)
+        if return_attention:
+            return output, attention_probs
+        return output
 
 
 class TransformerEncoderBlock(nn.Module):
@@ -381,14 +416,23 @@ class TransformerEncoderBlock(nn.Module):
         x: Tensor,
         key_padding_mask: Tensor | None = None,
         attention_mask: Tensor | None = None,
-    ) -> Tensor:
-        attn_output = self.self_attention(x, key_padding_mask=key_padding_mask)
+        return_attention: bool = False,
+    ) -> Tensor | tuple[Tensor, Tensor]:
+        if return_attention:
+            attn_output, attention_probs = self.self_attention(
+                x, key_padding_mask=key_padding_mask, return_attention=True
+            )
+        else:
+            attn_output = self.self_attention(x, key_padding_mask=key_padding_mask)
         x = self.norm1(x + self.dropout(attn_output))
         x = apply_sequence_mask(x, attention_mask)
 
         ffn_output = self.ffn(x)
         x = self.norm2(x + self.dropout(ffn_output))
         x = apply_sequence_mask(x, attention_mask)
+        if return_attention:
+            attention_map = attention_probs.mean(dim=1)
+            return x, attention_map
         return x
 
 
@@ -424,15 +468,32 @@ class TransformerEncoder(nn.Module):
             ]
         )
 
-    def forward(self, x: Tensor, attention_mask: Tensor) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        attention_mask: Tensor,
+        return_attention: bool = False,
+    ) -> Tensor | tuple[Tensor, list[Tensor]]:
         key_padding_mask = attention_mask == 0
+        if not return_attention:
+            for layer in self.layers:
+                x = layer(
+                    x,
+                    key_padding_mask=key_padding_mask,
+                    attention_mask=attention_mask,
+                )
+            return x
+
+        attention_maps: list[Tensor] = []
         for layer in self.layers:
-            x = layer(
+            x, attention_map = layer(
                 x,
                 key_padding_mask=key_padding_mask,
                 attention_mask=attention_mask,
+                return_attention=True,
             )
-        return x
+            attention_maps.append(attention_map)
+        return x, attention_maps
 
 
 class BidirectionalSequenceEncoder(nn.Module):

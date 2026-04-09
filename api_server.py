@@ -117,7 +117,7 @@ class ModelRuntime:
             "stoi": {token: index for index, token in enumerate(itos)},
         }
 
-    def encode_text(self, text: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def encode_text(self, text: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[str]]:
         tokens = default_tokenizer(text)[: self.max_len]
         token_ids = [self.vocab["stoi"].get(token, self.vocab["stoi"].get("<unk>", 1)) for token in tokens]
         if not token_ids:
@@ -125,7 +125,65 @@ class ModelRuntime:
         input_ids = torch.tensor([token_ids], dtype=torch.long, device=self.device)
         attention_mask = torch.ones_like(input_ids)
         lengths = torch.tensor([len(token_ids)], dtype=torch.long, device=self.device)
-        return input_ids, attention_mask, lengths
+        return input_ids, attention_mask, lengths, tokens
+
+    def _downsample_attention(self, attention: torch.Tensor, stride: int) -> torch.Tensor:
+        if stride <= 1:
+            return attention
+        seq_len = attention.size(0)
+        pad_len = (stride - seq_len % stride) % stride
+        if pad_len > 0:
+            attention = torch.nn.functional.pad(attention, (0, pad_len, 0, pad_len))
+        new_len = attention.size(0) // stride
+        attention = attention.view(new_len, stride, new_len, stride).mean(dim=(1, 3))
+        return attention
+
+    def _summarize_attention(
+        self,
+        attention: torch.Tensor,
+        tokens: list[str],
+        topk: int,
+        pair_k: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if attention.numel() == 0:
+            return [], []
+
+        scores = attention.sum(dim=1)
+        if scores.sum().item() > 0:
+            scores = scores / scores.sum()
+        topk = max(1, min(topk, scores.numel()))
+        values, indices = torch.topk(scores, k=topk)
+        token_importance = [
+            {"index": int(idx.item()), "token": tokens[int(idx.item())], "score": float(val.item())}
+            for idx, val in zip(indices, values)
+        ]
+
+        size = attention.size(0)
+        if size <= 1 or pair_k <= 0:
+            return token_importance, []
+
+        mask = ~torch.eye(size, dtype=torch.bool, device=attention.device)
+        flat_scores = attention.masked_select(mask)
+        if flat_scores.numel() == 0:
+            return token_importance, []
+
+        pair_k = max(1, min(pair_k, flat_scores.numel()))
+        pair_values, flat_indices = torch.topk(flat_scores, k=pair_k)
+        row_indices, col_indices = torch.where(mask)
+        attention_pairs = []
+        for value, flat_index in zip(pair_values, flat_indices):
+            row = int(row_indices[flat_index].item())
+            col = int(col_indices[flat_index].item())
+            attention_pairs.append(
+                {
+                    "source_index": row,
+                    "source_token": tokens[row],
+                    "target_index": col,
+                    "target_token": tokens[col],
+                    "score": float(value.item()),
+                }
+            )
+        return token_importance, attention_pairs
 
     def build_evidence(
         self,
@@ -166,13 +224,22 @@ class ModelRuntime:
         return items
 
     @torch.inference_mode()
-    def predict(self, text: str) -> dict[str, Any]:
-        input_ids, attention_mask, lengths = self.encode_text(text)
+    def predict(
+        self,
+        text: str,
+        return_attention: bool = False,
+        attention_stride: int = 1,
+        attention_max_tokens: int = 128,
+        attention_topk: int = 10,
+        attention_pair_k: int = 20,
+    ) -> dict[str, Any]:
+        input_ids, attention_mask, lengths, tokens = self.encode_text(text)
         output = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             lengths=lengths,
             return_dict=True,
+            return_attention=return_attention,
         )
         probabilities = torch.softmax(output.logits, dim=-1).squeeze(0).cpu()
         positive_prob = float(probabilities[self.positive_class_index].item())
@@ -207,7 +274,7 @@ class ModelRuntime:
             100,
             int(round(30 + negative_prob * 55 + aspect_scores[primary_aspect] * 0.08 + evidence_strength * 0.08)),
         )
-        return {
+        analysis: dict[str, Any] = {
             "originalText": text,
             "sentimentScore": sentiment_score,
             "severity": severity,
@@ -226,6 +293,34 @@ class ModelRuntime:
                 "negative": round(negative_prob, 6),
             },
         }
+        if return_attention and output.attention_maps:
+            token_count = min(len(tokens), attention_max_tokens)
+            attention_map = output.attention_maps[-1][0, :token_count, :token_count].detach().cpu()
+            attention_map = self._downsample_attention(attention_map, max(1, int(attention_stride)))
+            tokens_for_map = tokens[:token_count]
+            if int(attention_stride) > 1:
+                stride = int(attention_stride)
+                tokens_for_map = [
+                    "".join(tokens_for_map[i : i + stride]) for i in range(0, len(tokens_for_map), stride)
+                ]
+            token_importance, attention_pairs = self._summarize_attention(
+                attention_map,
+                tokens_for_map,
+                topk=attention_topk,
+                pair_k=attention_pair_k,
+            )
+            analysis.update(
+                {
+                    "attention_tokens": tokens_for_map,
+                    "attention_stride": max(1, int(attention_stride)),
+                    "attention_map": attention_map.tolist(),
+                    "attention_topk": attention_topk,
+                    "attention_pair_k": attention_pair_k,
+                    "attention_token_importance": token_importance,
+                    "attention_pairs": attention_pairs,
+                }
+            )
+        return analysis
 
 
 _RUNTIME: ModelRuntime | None = None
@@ -272,9 +367,21 @@ class Handler(BaseHTTPRequestHandler):
         if not text:
             self._write_json({"error": "text is required"}, status=HTTPStatus.BAD_REQUEST)
             return
+        return_attention = bool(payload.get("attention_map", False))
+        attention_stride = int(payload.get("attention_stride", 1) or 1)
+        attention_max_tokens = int(payload.get("attention_max_tokens", 128) or 128)
+        attention_topk = int(payload.get("attention_topk", 10) or 10)
+        attention_pair_k = int(payload.get("attention_pair_k", 20) or 20)
 
         try:
-            analysis = get_runtime().predict(text)
+            analysis = get_runtime().predict(
+                text,
+                return_attention=return_attention,
+                attention_stride=attention_stride,
+                attention_max_tokens=attention_max_tokens,
+                attention_topk=attention_topk,
+                attention_pair_k=attention_pair_k,
+            )
         except RuntimeError as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
             return
