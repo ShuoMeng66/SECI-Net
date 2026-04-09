@@ -1,119 +1,114 @@
-# SECI-Net
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
 
-SECI-Net is a PyTorch project for evidence-aware text classification, counterfactual supervision, and counterfactual review augmentation. The repository is organized as a code-first open-source project: the focus is on readable training code, reproducible experiments, and components that can be reused in downstream NLP work.
+<a name="readme-top"></a>
 
-This public code snapshot intentionally centers on the research code. Local-only materials such as paper writing folders and the frontend review console are not part of the published workflow.
 
-## Highlights
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <h3 align="center">SECI-Net</h3>
 
-- Hybrid classifier with Transformer-style contextual modeling, stacked recurrent modeling, and explicit evidence routing
-- Counterfactual training support for paired factual / counterfactual samples
-- Recoverability and intervention losses for controlled representation learning
-- Standalone `GAN.py` module for offline counterfactual review augmentation
-- Training, checkpointing, dataset preparation, and smoke-test coverage in one repository
-- Optional local inference API for quick model inspection
+  <p align="center">
+    Evidence-aware text classification with counterfactual supervision and offline GAN augmentation
+    <br />
+    <a href="https://github.com/ShuoMeng66/SECI-Net"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/ShuoMeng66/SECI-Net">View Demo</a>
+    ·
+    <a href="https://github.com/ShuoMeng66/SECI-Net/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/ShuoMeng66/SECI-Net/issues">Request Feature</a>
+  </p>
+</div>
 
-## Repository Layout
 
-```text
-SECI-Net/
-├── core/
-│   ├── data/
-│   │   ├── __init__.py
-│   │   └── text_dataset.py
-│   ├── model/
-│   │   ├── __init__.py
-│   │   ├── checkpointing.py
-│   │   ├── components.py
-│   │   ├── hybrid_text_model.py
-│   │   └── seci_net.py
-│   └── utils/
-│       ├── __init__.py
-│       └── losses.py
-├── main/
-│   ├── counterfactual_generator.py
-│   ├── download_datasets.py
-│   ├── split_dataset.py
-│   └── train.py
-├── tests/
-│   ├── test_gan.py
-│   └── test_seci_net_v2.py
-├── api_server.py
-├── GAN.py
-├── GAN.md
-├── README.md
-├── README-zh.md
-└── requirements.txt
-```
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
 
-## Installation
 
-### 1. Clone the repository
+<!-- ABOUT THE PROJECT -->
+## About The Project
 
-```bash
-git clone git@github.com:ShuoMeng66/SECI-Net.git
-cd SECI-Net
-```
+SECI-Net is a PyTorch project for evidence-aware text classification, counterfactual supervision, and offline counterfactual augmentation. It is designed as a code-first, research-friendly repository that keeps training, data processing, and evaluation close to plain PyTorch for clarity and extensibility.
 
-### 2. Create a virtual environment
+The repository includes a standalone `GAN.py` module for counterfactual review augmentation, plus a training pipeline that can optionally use GAN-generated samples as an offline augmentation stage.
 
-```bash
-python -m venv .venv
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-Windows PowerShell:
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
+### Built With
 
-Linux / macOS:
+* [PyTorch](https://pytorch.org/)
+* [scikit-learn](https://scikit-learn.org/)
+* [Hugging Face Datasets](https://huggingface.co/docs/datasets/)
 
-```bash
-source .venv/bin/activate
-```
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-### 3. Install dependencies
 
-```bash
-pip install -r requirements.txt
-```
+<!-- GETTING STARTED -->
+## Getting Started
 
-Python 3.10+ is recommended.
+This section explains how to get SECI-Net running locally.
 
-## Data Format
+### Prerequisites
 
-SECI-Net accepts `csv`, `tsv`, and `txt`.
+* Python 3.10+
+* pip
 
-Default structured columns:
+### Installation
 
-- `text`
-- `label`
+1. Clone the repo
+   ```bash
+   git clone git@github.com:ShuoMeng66/SECI-Net.git
+   ```
+2. Create a virtual environment
+   ```bash
+   python -m venv .venv
+   ```
+3. Activate the environment
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+4. Install dependencies
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Optional counterfactual columns:
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-- `counterfactual_text`
-- `counterfactual_label`
-- `time_column`
-- `counterfactual_time_column`
 
-Plain-text files must use:
+<!-- USAGE EXAMPLES -->
+## Usage
 
-```text
-label<TAB>text
-```
-
-## Quick Start
-
-### 1. Download a dataset
-
-The built-in downloader supports:
-
-- `yelp_polarity`
-- `ag_news`
-- `imdb`
-
-Example:
+### 1. Download a public dataset
 
 ```bash
 python main/download_datasets.py \
@@ -121,7 +116,7 @@ python main/download_datasets.py \
   --output_dir data/raw/yelp_polarity
 ```
 
-If you are on a mainland network or a server where Hugging Face access is unstable, try:
+If Hugging Face access is unstable, use:
 
 ```bash
 python main/download_datasets.py \
@@ -139,7 +134,7 @@ python main/split_dataset.py \
   --output_dir data/yelp_polarity
 ```
 
-### 3. Train the classifier
+### 3. Train SECI-Net
 
 ```bash
 python main/train.py \
@@ -149,16 +144,7 @@ python main/train.py \
   --save_dir checkpoints/yelp_polarity
 ```
 
-## GAN-Based Counterfactual Augmentation
-
-SECI-Net now supports an offline augmentation stage for review-style counterfactuals. The workflow is:
-
-1. train the standalone GAN on paired counterfactual examples
-2. generate missing counterfactual reviews for the training split
-3. merge the generated pairs back into the training records
-4. continue with the regular SECI-Net classification training
-
-Enable it directly from the main training script:
+### 4. Enable GAN-based counterfactual augmentation
 
 ```bash
 python main/train.py \
@@ -173,13 +159,7 @@ python main/train.py \
   --gan_max_target_len 128
 ```
 
-Important defaults:
-
-- GAN augmentation only touches the training split
-- human-annotated counterfactual pairs are preserved by default
-- when no paired counterfactual data is available, the GAN stage is skipped cleanly
-
-You can also run the standalone wrapper:
+For a standalone augmentation run:
 
 ```bash
 python main/counterfactual_generator.py \
@@ -189,68 +169,77 @@ python main/counterfactual_generator.py \
   --output_path outputs/generated_counterfactuals.csv
 ```
 
-See [`GAN.md`](./GAN.md) for the design rationale.
-
-## Training Outputs
-
-Each training run writes experiment artifacts under `--save_dir`, including:
-
-- `best_model.pt`
-- `train_args.json`
-- `vocab.json`
-- `labels.json`
-- `metrics_history.csv`
-- `metrics_history.json`
-- `step_metrics.csv`
-- `summary.json`
-
-When GAN augmentation is enabled, an additional `gan/` directory is created under `--save_dir` by default:
-
-- `generated_counterfactuals.csv`
-- `metrics.json`
-- `counterfactual_generator.pt`
-- `counterfactual_discriminator.pt`
-- `counterfactual_vocab.json`
-- `counterfactual_labels.json`
-
-## Inference API
-
-For lightweight local inspection, you can run:
+For API-based inspection:
 
 ```bash
 python api_server.py
 ```
 
-The local API serves a simple prediction endpoint around a saved checkpoint and is intended for local experimentation rather than production deployment.
+See `GAN.md` for the design rationale behind the offline augmentation stage.
 
-## Testing
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-Run the current unit and smoke tests with:
 
-```bash
-python -m unittest tests.test_seci_net_v2 tests.test_gan
-```
-
-The test suite covers:
-
-- tensor-shape and checkpoint smoke tests for SECI-Net
-- GAN data collation and fallback behavior
-- GAN forward passes and one-epoch CPU training
-- train-time integration with and without GAN augmentation
-
-## Design Philosophy
-
-This repository prefers inspectable code over heavy abstraction. The model, data flow, loss composition, and training loop are kept close to plain PyTorch so that researchers and engineers can trace what is happening without unpacking a large framework layer.
-
+<!-- ROADMAP -->
 ## Roadmap
 
-Planned improvements include:
+- [ ] Stronger aspect modeling for counterfactual reviews
+- [ ] Filtering or reranking for GAN-generated samples
+- [ ] Broader benchmark coverage and reproducibility presets
 
-- stronger aspect modeling for counterfactual reviews
-- better filtering or reranking for GAN-generated samples
-- broader benchmark coverage
-- clearer reproducibility presets for ablation studies
+See the [open issues](https://github.com/ShuoMeng66/SECI-Net/issues) for a full list of proposed features (and known issues).
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- CONTRIBUTING -->
+## Contributing
+
+Contributions are welcome. If you have a suggestion that would make this project better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m "Add AmazingFeature"`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- LICENSE -->
 ## License
 
-A license file has not been added yet.
+This repository does not include a license file yet.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- CONTACT -->
+## Contact
+
+Project Link: [https://github.com/ShuoMeng66/SECI-Net](https://github.com/ShuoMeng66/SECI-Net)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- ACKNOWLEDGMENTS -->
+## Acknowledgments
+
+* [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+* [PyTorch](https://pytorch.org/)
+* [Hugging Face Datasets](https://huggingface.co/docs/datasets/)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[contributors-url]: https://github.com/ShuoMeng66/SECI-Net/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[forks-url]: https://github.com/ShuoMeng66/SECI-Net/network/members
+[stars-shield]: https://img.shields.io/github/stars/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[stars-url]: https://github.com/ShuoMeng66/SECI-Net/stargazers
+[issues-shield]: https://img.shields.io/github/issues/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[issues-url]: https://github.com/ShuoMeng66/SECI-Net/issues
+[license-shield]: https://img.shields.io/github/license/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[license-url]: https://github.com/ShuoMeng66/SECI-Net/blob/main/LICENSE

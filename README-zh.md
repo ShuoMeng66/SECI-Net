@@ -1,119 +1,112 @@
-# SECI-Net
+[![贡献者][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stars][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
 
-SECI-Net 是一个基于 PyTorch 的证据感知文本分类与反事实学习项目，面向“可读代码、可复现实验、可复用模块”来组织。这个公开仓库聚焦研究代码本身：训练、数据、增强、测试和推理接口都集中在同一个代码库中，方便继续做实验和开源协作。
+<a name="readme-top"></a>
 
-当前公开版本只保留代码主线。论文写作目录、课程论文目录和本地前端页面等内容不纳入开源工作流。
 
-## 项目亮点
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <h3 align="center">SECI-Net</h3>
 
-- 混合式文本分类器：结合上下文建模、序列建模和显式证据路由
-- 支持事实样本 / 反事实样本成对监督
-- 提供干预损失与 recoverability 学习目标
-- 独立的 `GAN.py` 反事实评论离线增强模块
-- 包含训练脚本、数据准备、checkpoint 工具和单元测试
-- 提供可选的本地推理 API，便于快速查看模型输出
+  <p align="center">
+    证据感知文本分类与反事实学习，支持离线 GAN 增强
+    <br />
+    <a href="https://github.com/ShuoMeng66/SECI-Net"><strong>查看文档 »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/ShuoMeng66/SECI-Net">演示</a>
+    ·
+    <a href="https://github.com/ShuoMeng66/SECI-Net/issues">报告 Bug</a>
+    ·
+    <a href="https://github.com/ShuoMeng66/SECI-Net/issues">提出需求</a>
+  </p>
+</div>
 
-## 仓库结构
 
-```text
-SECI-Net/
-├── core/
-│   ├── data/
-│   │   ├── __init__.py
-│   │   └── text_dataset.py
-│   ├── model/
-│   │   ├── __init__.py
-│   │   ├── checkpointing.py
-│   │   ├── components.py
-│   │   ├── hybrid_text_model.py
-│   │   └── seci_net.py
-│   └── utils/
-│       ├── __init__.py
-│       └── losses.py
-├── main/
-│   ├── counterfactual_generator.py
-│   ├── download_datasets.py
-│   ├── split_dataset.py
-│   └── train.py
-├── tests/
-│   ├── test_gan.py
-│   └── test_seci_net_v2.py
-├── api_server.py
-├── GAN.py
-├── GAN.md
-├── README.md
-├── README-zh.md
-└── requirements.txt
-```
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>目录</summary>
+  <ol>
+    <li>
+      <a href="#关于项目">关于项目</a>
+      <ul>
+        <li><a href="#技术栈">技术栈</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#开始使用">开始使用</a>
+      <ul>
+        <li><a href="#准备工作">准备工作</a></li>
+        <li><a href="#安装">安装</a></li>
+      </ul>
+    </li>
+    <li><a href="#使用方式">使用方式</a></li>
+    <li><a href="#路线图">路线图</a></li>
+    <li><a href="#参与贡献">参与贡献</a></li>
+    <li><a href="#许可证">许可证</a></li>
+    <li><a href="#联系">联系</a></li>
+    <li><a href="#致谢">致谢</a></li>
+  </ol>
+</details>
 
-## 安装
 
-### 1. 克隆仓库
+<!-- ABOUT THE PROJECT -->
+## 关于项目
 
-```bash
-git clone git@github.com:ShuoMeng66/SECI-Net.git
-cd SECI-Net
-```
+SECI-Net 是一个基于 PyTorch 的证据感知文本分类项目，支持反事实监督和离线 GAN 增强。仓库面向研究与工程协作场景，尽量保持训练流程和数据处理的可读性与可追踪性。
 
-### 2. 创建虚拟环境
+当前公开版本主要包含核心代码与训练流程；论文写作目录、课程论文目录以及本地前端页面等内容不会进入开源主线。
 
-```bash
-python -m venv .venv
-```
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-Windows PowerShell：
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
+### 技术栈
 
-Linux / macOS：
+* [PyTorch](https://pytorch.org/)
+* [scikit-learn](https://scikit-learn.org/)
+* [Hugging Face Datasets](https://huggingface.co/docs/datasets/)
 
-```bash
-source .venv/bin/activate
-```
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-### 3. 安装依赖
 
-```bash
-pip install -r requirements.txt
-```
+<!-- GETTING STARTED -->
+## 开始使用
 
-建议使用 Python 3.10 及以上版本。
+### 准备工作
 
-## 数据格式
+* Python 3.10+
+* pip
 
-SECI-Net 支持 `csv`、`tsv` 和 `txt`。
+### 安装
 
-结构化文件默认字段：
+1. 克隆仓库
+   ```bash
+   git clone git@github.com:ShuoMeng66/SECI-Net.git
+   ```
+2. 创建虚拟环境
+   ```bash
+   python -m venv .venv
+   ```
+3. 激活虚拟环境
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+4. 安装依赖
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-- `text`
-- `label`
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-可选的反事实字段：
 
-- `counterfactual_text`
-- `counterfactual_label`
-- `time_column`
-- `counterfactual_time_column`
-
-纯文本格式要求每行是：
-
-```text
-label<TAB>text
-```
-
-## 快速开始
+<!-- USAGE EXAMPLES -->
+## 使用方式
 
 ### 1. 下载数据集
-
-内置快捷数据集包括：
-
-- `yelp_polarity`
-- `ag_news`
-- `imdb`
-
-示例：
 
 ```bash
 python main/download_datasets.py \
@@ -121,7 +114,7 @@ python main/download_datasets.py \
   --output_dir data/raw/yelp_polarity
 ```
 
-如果在校园服务器、AutoDL 或访问 Hugging Face 不稳定的网络环境，建议优先尝试：
+如果网络环境不稳定，可尝试：
 
 ```bash
 python main/download_datasets.py \
@@ -139,7 +132,7 @@ python main/split_dataset.py \
   --output_dir data/yelp_polarity
 ```
 
-### 3. 训练分类模型
+### 3. 训练 SECI-Net
 
 ```bash
 python main/train.py \
@@ -149,16 +142,7 @@ python main/train.py \
   --save_dir checkpoints/yelp_polarity
 ```
 
-## 基于 GAN 的反事实增强
-
-当前版本支持“先离线增强、再分类训练”的反事实评论工作流：
-
-1. 使用已有成对反事实样本训练独立 GAN
-2. 为训练集里缺失反事实字段的样本生成候选反事实评论
-3. 把生成结果回填到训练记录
-4. 继续执行常规的 SECI-Net 分类训练
-
-直接在主训练脚本里开启：
+### 4. 启用 GAN 反事实增强
 
 ```bash
 python main/train.py \
@@ -173,13 +157,7 @@ python main/train.py \
   --gan_max_target_len 128
 ```
 
-几个重要默认行为：
-
-- GAN 只增强训练集
-- 默认保留人工标注反事实，不直接覆盖
-- 如果训练集里没有可用的成对反事实样本，GAN 阶段会自动跳过，不中断分类训练
-
-也可以单独运行包装脚本：
+如需单独运行增强：
 
 ```bash
 python main/counterfactual_generator.py \
@@ -189,68 +167,71 @@ python main/counterfactual_generator.py \
   --output_path outputs/generated_counterfactuals.csv
 ```
 
-设计说明见 [`GAN.md`](./GAN.md)。
+更多设计说明请参考 `GAN.md`。
 
-## 训练产物
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-每次训练会在 `--save_dir` 下写出实验产物，包括：
 
-- `best_model.pt`
-- `train_args.json`
-- `vocab.json`
-- `labels.json`
-- `metrics_history.csv`
-- `metrics_history.json`
-- `step_metrics.csv`
-- `summary.json`
+<!-- ROADMAP -->
+## 路线图
 
-如果开启 GAN 增强，默认还会在 `--save_dir/gan` 下额外生成：
+- [ ] 更强的 aspect 建模与标注
+- [ ] GAN 生成样本过滤或 rerank
+- [ ] 扩展更多公开基准和复现实验配置
 
-- `generated_counterfactuals.csv`
-- `metrics.json`
-- `counterfactual_generator.pt`
-- `counterfactual_discriminator.pt`
-- `counterfactual_vocab.json`
-- `counterfactual_labels.json`
+查看完整计划与已知问题请参考 [issues](https://github.com/ShuoMeng66/SECI-Net/issues)。
 
-## 本地推理 API
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-如果想快速用本地 checkpoint 做推理，可以运行：
 
-```bash
-python api_server.py
-```
+<!-- CONTRIBUTING -->
+## 参与贡献
 
-这个接口主要用于本地实验和结果查看，不是生产部署方案。
+欢迎提交改进。如果你有更好的想法，可以 fork 仓库并提交 PR，或者直接新开 issue。
 
-## 测试
+1. Fork 本项目
+2. 创建分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交修改 (`git commit -m "Add AmazingFeature"`)
+4. 推送分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
 
-当前单元测试与 smoke test 可以通过下面的命令运行：
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-```bash
-python -m unittest tests.test_seci_net_v2 tests.test_gan
-```
 
-测试覆盖了：
+<!-- LICENSE -->
+## 许可证
 
-- SECI-Net 的张量 shape 和 checkpoint 流程
-- GAN 数据整理和缺省字段回退
-- GAN 前向计算与 CPU 单轮训练
-- 启用 / 不启用 GAN 增强时的训练集成流程
+当前仓库尚未补充 License 文件。
 
-## 设计理念
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-这个项目尽量避免过度抽象。模型结构、数据流、损失函数和训练循环都尽量贴近原始 PyTorch 写法，让研究者和工程同学都能快速顺着代码理解具体实现。
 
-## 后续计划
+<!-- CONTACT -->
+## 联系
 
-后续可继续推进的方向包括：
+项目主页: [https://github.com/ShuoMeng66/SECI-Net](https://github.com/ShuoMeng66/SECI-Net)
 
-- 更强的 aspect 建模与标注方式
-- 对 GAN 生成样本增加过滤或 rerank
-- 扩展更多基准数据集
-- 增加更标准的消融实验配置
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
 
-## License
 
-当前仓库还没有补充 License 文件。
+<!-- ACKNOWLEDGMENTS -->
+## 致谢
+
+* [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+* [PyTorch](https://pytorch.org/)
+* [Hugging Face Datasets](https://huggingface.co/docs/datasets/)
+
+<p align="right">(<a href="#readme-top">返回顶部</a>)</p>
+
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[contributors-url]: https://github.com/ShuoMeng66/SECI-Net/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[forks-url]: https://github.com/ShuoMeng66/SECI-Net/network/members
+[stars-shield]: https://img.shields.io/github/stars/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[stars-url]: https://github.com/ShuoMeng66/SECI-Net/stargazers
+[issues-shield]: https://img.shields.io/github/issues/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[issues-url]: https://github.com/ShuoMeng66/SECI-Net/issues
+[license-shield]: https://img.shields.io/github/license/ShuoMeng66/SECI-Net.svg?style=for-the-badge
+[license-url]: https://github.com/ShuoMeng66/SECI-Net/blob/main/LICENSE
