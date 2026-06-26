@@ -20,7 +20,8 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 pip install -U pip
-pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install scikit-learn datasets gdown tqdm
 
 "$PYTHON" -c "import torch; print('cuda', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
 
