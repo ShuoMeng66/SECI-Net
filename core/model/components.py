@@ -506,18 +506,26 @@ class BidirectionalSequenceEncoder(nn.Module):
     ) -> None:
         super().__init__()
         self.output_dim = hidden_dim * 2
-        lstm_dropout = dropout if num_layers > 1 else 0.0
-        self.encoder = nn.LSTM(
-            input_size=input_dim,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            dropout=lstm_dropout,
-            batch_first=True,
-            bidirectional=True,
-        )
+        self.num_layers = num_layers
+        if num_layers <= 0:
+            self.encoder = None
+            self.projection = nn.Linear(input_dim, self.output_dim)
+        else:
+            self.projection = None
+            lstm_dropout = dropout if num_layers > 1 else 0.0
+            self.encoder = nn.LSTM(
+                input_size=input_dim,
+                hidden_size=hidden_dim,
+                num_layers=num_layers,
+                dropout=lstm_dropout,
+                batch_first=True,
+                bidirectional=True,
+            )
         self.output_dropout = nn.Dropout(dropout)
 
     def forward(self, x: Tensor, lengths: Tensor) -> Tensor:
+        if self.encoder is None:
+            return self.output_dropout(self.projection(x))
         packed = pack_padded_sequence(
             x,
             lengths=lengths.detach().cpu(),

@@ -15,6 +15,12 @@ DATASET_SPECS = {
         "direct_url": "https://drive.google.com/uc?export=download&id=0Bz8a_Dbh9QhbNUpYQ2N3SGlFaDg",
         "archive_root": "yelp_review_polarity_csv",
     },
+    "amazon_polarity": {
+        "hf_name": "amazon_polarity",
+        "direct_type": "torchtext_archive",
+        "direct_url": "https://drive.google.com/uc?export=download&id=0Bz8a_Dbh9QhbUGN1N25TOEpJNHE",
+        "archive_root": "amazon_review_polarity_csv",
+    },
     "ag_news": {
         "hf_name": "ag_news",
         "direct_type": "torchtext_archive",
@@ -66,9 +72,21 @@ def write_split(rows: list[dict[str, str]], output_path: Path) -> None:
 
 
 def clamp_rows(rows: list[dict[str, str]], max_rows_per_split: int) -> list[dict[str, str]]:
-    if max_rows_per_split <= 0:
+    if max_rows_per_split <= 0 or len(rows) <= max_rows_per_split:
         return rows
-    return rows[:max_rows_per_split]
+    import random
+
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        grouped.setdefault(row["label"], []).append(row)
+    rng = random.Random(42)
+    per_label = max_rows_per_split // len(grouped)
+    sampled: list[dict[str, str]] = []
+    for label_rows in grouped.values():
+        rng.shuffle(label_rows)
+        sampled.extend(label_rows[:per_label])
+    rng.shuffle(sampled)
+    return sampled[:max_rows_per_split]
 
 
 def export_hf_dataset(dataset_name: str, output_dir: Path, max_rows_per_split: int, endpoint: str | None = None) -> None:
@@ -131,7 +149,10 @@ def export_direct_dataset(spec: dict[str, str], output_dir: Path, max_rows_per_s
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
         archive_path = temp_dir_path / "dataset.tar.gz"
-        gdown.download(spec["direct_url"], str(archive_path), quiet=False, fuzzy=True)
+        try:
+            gdown.download(spec["direct_url"], str(archive_path), quiet=False, fuzzy=True)
+        except TypeError:
+            gdown.download(spec["direct_url"], str(archive_path), quiet=False)
 
         with tarfile.open(archive_path, "r:gz") as archive:
             archive.extractall(temp_dir_path)
@@ -181,6 +202,8 @@ def try_download(args: argparse.Namespace, spec: dict[str, str]) -> None:
 
     for source_name in order:
         try:
+            if source_name == "direct" and spec.get("direct_type") is None:
+                raise ValueError(f"{args.dataset} has no direct download backend")
             backends[source_name]()
             print(f"Download finished with source={source_name}")
             return
